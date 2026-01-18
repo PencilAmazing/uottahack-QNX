@@ -31,7 +31,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#define DEBUG
+// #define DEBUG
 
 static const int MIDDLE = 475;
 // HIGH is 787, close to arm
@@ -688,7 +688,7 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
     for (size_t i = 0; i < contoursPuck.size(); i++) {
         double area = cv::contourArea(contoursPuck[i]);
         
-        if (area < 100) continue;
+        if (area < 200) continue;
         
         // Fit circle to contour
         cv::Point2f center;
@@ -722,7 +722,7 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
         
         // Approximate the contour to a polygon
         std::vector<cv::Point> approx;
-        double epsilon = 0.04 * cv::arcLength(contoursSquare[i], true);
+        double epsilon = 0.02 * cv::arcLength(contoursSquare[i], true);
         cv::approxPolyDP(contoursSquare[i], approx, epsilon, true);
         
         if (approx.size() == 4) {
@@ -738,7 +738,7 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
                 
                 double angle = std::abs(std::atan2(v1.cross(v2), v1.dot(v2)) * 180.0 / CV_PI);
                 
-                if (angle < 50 || angle > 120) {
+                if (angle < 60 || angle > 120) {
                     isRectangle = false;
                     break;
                 }
