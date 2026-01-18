@@ -1,0 +1,6 @@
+usage: camera_example2_events -u <camera_unit>
+
+Example demonstrating processing of camera data received by an event
+
+    options:
+        -u:  Camera unit to use; if not specified, will list available units and exit
