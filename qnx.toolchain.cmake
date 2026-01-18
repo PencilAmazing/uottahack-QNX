@@ -1,0 +1,21 @@
+set(QNX TRUE)
+set(CMAKE_SYSTEM_NAME QNX)
+set(QNX_HOST "$ENV{QNX_HOST}")
+set(QNX_TARGET "$ENV{QNX_TARGET}")
+
+# specify the cross compiler
+# Notice that if Windows is the host platform, append ".exe" to the compiler paths
+set(CMAKE_C_COMPILER ${QNX_HOST}/usr/bin/qcc)
+set(CMAKE_CXX_COMPILER ${QNX_HOST}/usr/bin/q++)
+set(CMAKE_ASM_COMPILER ${QNX_HOST}/usr/bin/qcc)
+set(CMAKE_SYSROOT "${QNX_TARGET}/aarch64le") # or set(CMAKE_SYSROOT "${QNX_TARGET}/x86_64") depending on the target platform
+
+# extra flags
+set(QNX_FLAGS "-D_QNX_SOURCE")
+set(CMAKE_C_FLAGS "${QNX_FLAGS} ${CMAKE_C_FLAGS} ${EXTRA_CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "${QNX_FLAGS} ${CMAKE_CXX_FLAGS} ${EXTRA_CMAKE_CXX_FLAGS}")
+set(CMAKE_ASM_FLAGS "${QNX_FLAGS} ${CMAKE_ASM_FLAGS} ${EXTRA_CMAKE_ASM_FLAGS}")
+
+set(QNX_LINKER_FLAGS "-lm -lsocket -lgcc_s")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${QNX_LINKER_FLAGS} ${EXTRA_CMAKE_LINKER_FLAGS}")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${QNX_LINKER_FLAGS} ${EXTRA_CMAKE_LINKER_FLAGS}")
