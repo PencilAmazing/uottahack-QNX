@@ -1,0 +1,22 @@
+qcc -Vgcc_ntoaarch64le -Wall -Wextra -O2 -D_QNX_SOURCE -fpermissive -Iinclude -Iinclude/rpi_gpio -Iinclude/rpi_gpio/public -Iinclude/aarch64 -Iinclude/sys -I/home/dog/qnx800/target/qnx/usr/include -MMD -MP -c src/gpio.c -o build/gpio.o
+cc1: warning: command-line option '-fpermissive' is valid for C++/ObjC++ but not for C
+src/gpio.c:16:12: warning: 'setup_pwm_pin' defined but not used [-Wunused-function]
+   16 | static int setup_pwm_pin(int gpio_pin) {
+      |            ^~~~~~~~~~~~~
+qcc -Vgcc_ntoaarch64le -Wall -Wextra -O2 -D_QNX_SOURCE -fpermissive -Iinclude -Iinclude/rpi_gpio -Iinclude/rpi_gpio/public -Iinclude/aarch64 -Iinclude/sys -I/home/dog/qnx800/target/qnx/usr/include -MMD -MP -c src/rpi_gpio.c -o build/rpi_gpio.o
+cc1: warning: command-line option '-fpermissive' is valid for C++/ObjC++ but not for C
+qcc -Vgcc_ntoaarch64le -Wall -Wextra -O2 -D_QNX_SOURCE -fpermissive -Iinclude -Iinclude/rpi_gpio -Iinclude/rpi_gpio/public -Iinclude/aarch64 -Iinclude/sys -I/home/dog/qnx800/target/qnx/usr/include -MMD -MP -c src/main.c -o build/main.o
+cc1: warning: command-line option '-fpermissive' is valid for C++/ObjC++ but not for C
+src/main.c: In function 'main':
+src/main.c:15:14: warning: unused parameter 'argc' [-Wunused-parameter]
+   15 | int main(int argc, char *argv[]) {
+      |          ~~~~^~~~
+src/main.c:15:26: warning: unused parameter 'argv' [-Wunused-parameter]
+   15 | int main(int argc, char *argv[]) {
+      |                    ~~~~~~^~~~~~
+src/main.c: At top level:
+src/main.c:13:18: warning: 'RIGHT_PIN' defined but not used [-Wunused-const-variable=]
+   13 | static const int RIGHT_PIN = 19;
+      |                  ^~~~~~~~~
+qcc -Vgcc_ntoaarch64le_cxx build/gpio.o build/rpi_gpio.o build/main.o  -o bin/program  
+Build complete: bin/program

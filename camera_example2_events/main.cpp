@@ -24,6 +24,8 @@
 #include <pthread.h>
 
 #include <camera/camera_api.h>
+#include <sys/iofunc.h>
+#include <sys/dispatch.h>
 #include <sys/neutrino.h>
 #include "gpio.h"
 
@@ -130,6 +132,8 @@ int main(int argc, char* argv[])
     camera_handle_t handle = CAMERA_HANDLE_INVALID;
     event_thread_state_t eventThreadState;
 
+    int coid = name_open("pwm_controller", 0);
+
     // Read command line options
     while ((opt = getopt(argc, argv, "u:")) != -1 || (optind < argc)) {
         switch (opt) {
@@ -168,7 +172,7 @@ int main(int argc, char* argv[])
     printf("\n");
 
     // GPIO setup
-    init_gpio();
+    // init_gpio();
 
     // Start the event thread
     memset(&eventThreadState, 0x0, sizeof(eventThreadState));
@@ -223,8 +227,10 @@ int main(int argc, char* argv[])
         exit(EXIT_FAILURE);
     }
 
+    name_close(coid);
+
     // Set GPIO pins low
-    deinit_gpio();
+    // deinit_gpio();
     
     exit(EXIT_SUCCESS);
 }
