@@ -722,7 +722,7 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
         
         // Approximate the contour to a polygon
         std::vector<cv::Point> approx;
-        double epsilon = 0.02 * cv::arcLength(contoursSquare[i], true);
+        double epsilon = 0.04 * cv::arcLength(contoursSquare[i], true);
         cv::approxPolyDP(contoursSquare[i], approx, epsilon, true);
         
         if (approx.size() == 4) {
@@ -738,7 +738,7 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
                 
                 double angle = std::abs(std::atan2(v1.cross(v2), v1.dot(v2)) * 180.0 / CV_PI);
                 
-                if (angle < 60 || angle > 120) {
+                if (angle < 40 || angle > 120) {
                     isRectangle = false;
                     break;
                 }
@@ -827,6 +827,10 @@ cv::Mat drawDetections(const unsigned char* imageData, int width, int height, in
 static int sendPaddle(Puck puck, Square paddle) {
     int delta = puck.y - paddle.y;
 
+    if(!puck.found || !paddle.found) {
+        delta = 0;
+    }
+    
     int status = MsgSend(pwm_controller_coid, &delta, sizeof(int), NULL, 0);
     if (status == -1) {
         printf("MsgSend failed\n");

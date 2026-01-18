@@ -52,11 +52,11 @@ int main(int argc, char *argv[]) {
     run_command("gpio-rp1 set 18 op dl");
     run_command("gpio-rp1 set 19 op dl");
     
-    if (rpi_gpio_setup_pwm(LEFT_PIN, 1000, GPIO_PWM_MODE_PWM)) {
-        fprintf(stderr, "Failed to initialize PWM\n");
-        return EXIT_FAILURE;
-    }
-    rpi_gpio_set_pwm_duty_cycle(LEFT_PIN, 0);
+    /* if (rpi_gpio_setup_pwm(LEFT_PIN, 1000, GPIO_PWM_MODE_PWM)) { */
+    /*     fprintf(stderr, "Failed to initialize PWM\n"); */
+    /*     return EXIT_FAILURE; */
+    /* } */
+    /* rpi_gpio_set_pwm_duty_cycle(LEFT_PIN, 0); */
 
     attach = name_attach(NULL, "pwm_controller", 0);
     if (attach == NULL) {
@@ -88,13 +88,13 @@ int main(int argc, char *argv[]) {
         // Set duty cycle and reply
         printf("Received %d\n", duty_cycle);
 
-        if (duty_cycle < -100) {
+        if (duty_cycle < -200) {
             printf("left\n");
             go_left();
-        } else if(duty_cycle > 100) {
+        } else if(duty_cycle > 200) {
             printf("right\n");
             go_right();
-        } else {
+        } else if (duty_cycle > 700 || duty_cycle < -700) {
             printf("stop\n");
             stop();
         }
