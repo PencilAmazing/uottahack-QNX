@@ -18,7 +18,8 @@ int main(int argc, char **argv) {
     
     int duty = atoi(argv[2]);
     printf("Sending duty cycle: %d to %s\n", duty, argv[1]);
-    
+
+    // Don't expect a response
     int status = MsgSend(coid, &duty, sizeof(int), NULL, 0);
     if (status == -1) {
         perror("MsgSend failed");

@@ -15,6 +15,7 @@ static const int RIGHT_PIN = 19;
 int main(int argc, char *argv[]) {
     name_attach_t *attach;
     int duty_cycle;
+    char msg[256];
     int rcvid;
 
     printf("QNX PWM Controller starting...\n");
@@ -35,7 +36,8 @@ int main(int argc, char *argv[]) {
     printf("PWM Controller ready. Waiting for messages...\n");
 
     while (1) {
-        rcvid = MsgReceive(attach->chid, &duty_cycle, sizeof(int), NULL);
+        rcvid = MsgReceive(attach->chid, &msg, sizeof(msg), NULL);
+        duty_cycle = *(int*)msg;
         
         if (rcvid == -1) {
             perror("MsgReceive failed");
@@ -44,10 +46,16 @@ int main(int argc, char *argv[]) {
 
         if (rcvid == 0) continue;  // Pulse
 
+        MsgReply(rcvid, EOK, NULL, 0);
+
+        if (duty_cycle == 262422) {
+            // Skip this, I don't know why or how
+            continue;
+        }
+        
         // Set duty cycle and reply
         printf("Received %d\n", duty_cycle);
-        MsgReply(rcvid, EOK, NULL, 0);
-        fflush(stdout);
+        
         /* if (set_duty_cycle(&ctrl, (float)duty_cycle) == 0) { */
         /*     MsgReply(rcvid, EOK, NULL, 0); */
         /* } else { */

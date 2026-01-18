@@ -21,3 +21,4 @@
 *.pinfo
 *.out
 .ccls-cache/
+.cache
