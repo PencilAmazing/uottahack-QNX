@@ -124,6 +124,8 @@ static void processCameraData(camera_buffer_t* buffer);
  */
 static void blockOnKeyPress(void);
 
+static int pwm_controller_coid = -1;
+
 int main(int argc, char* argv[])
 {
     int err;
@@ -132,7 +134,7 @@ int main(int argc, char* argv[])
     camera_handle_t handle = CAMERA_HANDLE_INVALID;
     event_thread_state_t eventThreadState;
 
-    int coid = name_open("pwm_controller", 0);
+    pwm_controller_coid = name_open("/dev/name/local/pwm_controller", 0);
 
     // Read command line options
     while ((opt = getopt(argc, argv, "u:")) != -1 || (optind < argc)) {
@@ -227,7 +229,9 @@ int main(int argc, char* argv[])
         exit(EXIT_FAILURE);
     }
 
-    name_close(coid);
+    int stop = 0;
+    int status = MsgSend(pwm_controller_coid, &stop, sizeof(int), NULL, 0);
+    name_close(pwm_controller_coid);
 
     // Set GPIO pins low
     // deinit_gpio();
@@ -823,11 +827,16 @@ cv::Mat drawDetections(const unsigned char* imageData, int width, int height, in
 static int sendPaddle(Puck puck, Square paddle) {
     int delta = puck.y - paddle.y;
 
-    if (delta > 100) {
-        paddle_left();
-    } else if(delta < -100) {
-        paddle_right();
+    int status = MsgSend(pwm_controller_coid, &delta, sizeof(int), NULL, 0);
+    if (status == -1) {
+        printf("MsgSend failed\n");
     }
+    
+    // if (delta > 100) {
+    //     paddle_left();
+    // } else if(delta < -100) {
+    //     paddle_right();
+    // }
 
     return delta;
 }
