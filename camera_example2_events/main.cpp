@@ -604,139 +604,188 @@ struct Puck {
     int velocity_x;
     int velocity_y;
 };
-Puck detectGreenPuck(const unsigned char* imageData, int width, int height, int stride) {
-     Puck puck = {0, 0, 0, false};
+
+struct Square {
+    int x;
+    int y;
+    float size;
+    bool found;
+};
+
+struct DetectionResult {
+    Puck puck;
+    Square square;
+};
+
+DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int height, int stride) {
+    DetectionResult result;
+    result.puck = {0, 0, 0, false};
+    result.square = {0, 0, 0, false};
     
-     // Create cv::Mat from raw image data
-     /* printf("stride %d", stride); */
-     /* fflush(stdout); */
-     // Convert YUYV to BGR
+    // Create cv::Mat from raw YUYV (YCbYCr) data
     cv::Mat yuyv(height, width, CV_8UC2, (void*)imageData, stride);
+    
+    // Convert YUYV to BGR
     cv::Mat img;
     cv::cvtColor(yuyv, img, cv::COLOR_YUV2BGR_YUYV);
-
-   
-    // Preprocess: Enhance brightness and contrast for dark images
-
-    // cv::Mat enhanced;
     
-    // // Gamma correction - increase gamma for brighter image
-    // double gamma = 3; // Increased for much brighter image
-    // cv::Mat lookUpTable(1, 256, CV_8U);
-    // uchar* p = lookUpTable.ptr();
-    // for(int i = 0; i < 256; ++i)
-    //     p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, 1.0 / gamma) * 255.0);
-    // cv::LUT(img, lookUpTable, enhanced);
-
-    // // Use enhanced image for detection
-    // img = enhanced;
-
+    // Preprocess: Enhance brightness and contrast for dark images
+    cv::Mat enhanced;
+    
+    // Gamma correction - increase gamma for brighter image
+    double gamma = 2.5;
+    cv::Mat lookUpTable(1, 256, CV_8U);
+    uchar* p = lookUpTable.ptr();
+    for(int i = 0; i < 256; ++i)
+        p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, 1.0 / gamma) * 255.0);
+    cv::LUT(img, lookUpTable, enhanced);
+    
+    // Use enhanced image for detection
+    img = enhanced;
+    
     // Convert to HSV color space
     cv::Mat hsv;
     cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
     
-    cv::Scalar lowerRed1(0, 20, 30);
-    cv::Scalar upperRed1(10, 255, 255);
-    cv::Scalar lowerRed2(170, 20, 30);
-    cv::Scalar upperRed2(180, 255, 255);
-    
     // Define range for green color in HSV
-    // Adjusted for darker images - lower saturation and value thresholds
-    cv::Scalar lowerGreen(35, 25, 25);  // Lowered S and V for dark conditions
-    // Upper bound
+    cv::Scalar lowerGreen(35, 25, 25);
     cv::Scalar upperGreen(85, 255, 255);
     
     // Threshold the image to get only green colors
     cv::Mat mask;
     cv::inRange(hsv, lowerGreen, upperGreen, mask);
     
-    #ifdef DEBUG
-    cv::imwrite("mask.tiff", mask);
-    #endif
+    // Apply morphological operations to remove noise (using ellipse for puck detection)
+    cv::Mat kernelEllipse = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    cv::Mat maskPuck;
+    cv::morphologyEx(mask, maskPuck, cv::MORPH_OPEN, kernelEllipse);
+    cv::morphologyEx(maskPuck, maskPuck, cv::MORPH_CLOSE, kernelEllipse);
     
-    // Apply morphological operations to remove noise
-    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(9, 9));
-    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
-    cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel);
+    // Apply morphological operations for square detection (using rectangle)
+    cv::Mat kernelRect = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+    cv::Mat maskSquare;
+    cv::morphologyEx(mask, maskSquare, cv::MORPH_OPEN, kernelRect);
+    cv::morphologyEx(maskSquare, maskSquare, cv::MORPH_CLOSE, kernelRect);
     
-    // Find contours
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    // Find contours for puck detection
+    std::vector<std::vector<cv::Point>> contoursPuck;
+    cv::findContours(maskPuck, contoursPuck, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     
-    // Filter contours to find the largest circular puck
-    double maxArea = 0;
-    
-    int bigenough = 0;
-    for (const auto& contour : contours) {
-        double area = cv::contourArea(contour);
+    // Detect puck (circular shape)
+    double maxAreaPuck = 0;
+    for (size_t i = 0; i < contoursPuck.size(); i++) {
+        double area = cv::contourArea(contoursPuck[i]);
         
-        // Filter by area (adjust threshold as needed)
-        if (area < 100) {
-            // printf("Skipping contour %d", count);
-            continue;
-        }
-
-        bigenough += 1;
+        if (area < 100) continue;
         
         // Fit circle to contour
         cv::Point2f center;
         float radius;
-        cv::minEnclosingCircle(contour, center, radius);
+        cv::minEnclosingCircle(contoursPuck[i], center, radius);
         
         // Check circularity
-        double perimeter = cv::arcLength(contour, true);
+        double perimeter = cv::arcLength(contoursPuck[i], true);
         double circularity = 4 * CV_PI * area / (perimeter * perimeter);
-
+        
         // Filter by circularity and keep the largest one
-        if (circularity > 0.5 && area > maxArea) {
-            // Found the puck, push to history
-            frameCounterTillSkip += 1;
-            if (frameCounterTillSkip > FRAMES_TO_SKIP) {
-                frameCounterTillSkip = 0;
-
-                point_history[historyPointer] = cv::Point((int)center.x, (int)center.y);
-                historyPointer = (historyPointer + 1) % HISTORY_SIZE;
+        if (circularity > 0.7 && area > maxAreaPuck) {
+            maxAreaPuck = area;
+            result.puck.x = (int)center.x;
+            result.puck.y = (int)center.y;
+            result.puck.radius = radius;
+            result.puck.found = true;
+        }
+    }
+    
+    // Find contours for square detection
+    std::vector<std::vector<cv::Point>> contoursSquare;
+    cv::findContours(maskSquare, contoursSquare, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    
+    // Detect square
+    double maxAreaSquare = 0;
+    for (size_t i = 0; i < contoursSquare.size(); i++) {
+        double area = cv::contourArea(contoursSquare[i]);
+        
+        if (area < 100) continue;
+        
+        // Approximate the contour to a polygon
+        std::vector<cv::Point> approx;
+        double epsilon = 0.04 * cv::arcLength(contoursSquare[i], true);
+        cv::approxPolyDP(contoursSquare[i], approx, epsilon, true);
+        
+        if (approx.size() == 4) {
+            // Check if angles are approximately 90 degrees
+            bool isRectangle = true;
+            for (int j = 0; j < 4; j++) {
+                cv::Point pt1 = approx[j];
+                cv::Point pt2 = approx[(j + 1) % 4];
+                cv::Point pt3 = approx[(j + 2) % 4];
+                
+                cv::Point v1 = pt1 - pt2;
+                cv::Point v2 = pt3 - pt2;
+                
+                double angle = std::abs(std::atan2(v1.cross(v2), v1.dot(v2)) * 180.0 / CV_PI);
+                
+                if (angle < 80 || angle > 100) {
+                    isRectangle = false;
+                    break;
+                }
             }
             
-            maxArea = area;
-            puck.x = (int)center.x;
-            puck.y = (int)center.y;
-            puck.radius = radius;
-            puck.found = true;
-        };
-
-        cv::Point p(center.x, center.y);
-
-        #ifdef DEBUG
-        /* DEBUG: Draw some annotations */
-        cv::circle(img, p, radius, {0, 255, 0}, 4);
-
-        cv::putText(
-            img,
-            cv::format("radius: %.2f, circle: %.02f, area: %.02f ", radius, circularity, area),
-            p + cv::Point(25, -10),
-            cv::FONT_HERSHEY_SIMPLEX,
-            0.5,
-            {0, 255, 0},
-            1,
-            cv::LINE_AA
-        );
-        #endif
+            if (isRectangle) {
+                // Get bounding rectangle
+                cv::Rect boundRect = cv::boundingRect(approx);
+                
+                // Check if it's roughly square (aspect ratio close to 1)
+                double aspectRatio = (double)boundRect.width / boundRect.height;
+                
+                if (aspectRatio > 0.7 && aspectRatio < 1.3 && area > maxAreaSquare) {
+                    maxAreaSquare = area;
+                    result.square.x = boundRect.x + boundRect.width / 2;
+                    result.square.y = boundRect.y + boundRect.height / 2;
+                    result.square.size = (boundRect.width + boundRect.height) / 2.0f;
+                    result.square.found = true;
+                }
+            }
+        }
     }
+    
+    return result;
+}
 
+cv::Mat drawDetections(const unsigned char* imageData, int width, int height, int stride,
+                       const DetectionResult& result) {
+    // Convert YUYV to BGR
+    cv::Mat yuyv(height, width, CV_8UC2, (void*)imageData, stride);
+    cv::Mat img;
+    cv::cvtColor(yuyv, img, cv::COLOR_YUV2BGR_YUYV);
     
+    cv::Mat output = img.clone();
     
-    // DEBUG: Save enhanced image
-    #ifdef DEBUG
-    cv::circle(img, cv::Point(puck.x, puck.y), puck.radius, {0, 0, 225}, 4);
-
-    cv::circle(img, cv::Point(10, 10), 4, {0,0,0}, 4);
-    cv::circle(img, cv::Point(img.size().width-10, img.size().height-10), 4, {0,0,0}, 4);
+    // Draw puck if found
+    if (result.puck.found) {
+        cv::circle(output, cv::Point(result.puck.x, result.puck.y), (int)result.puck.radius, 
+                   cv::Scalar(0, 255, 255), 2);
+        cv::circle(output, cv::Point(result.puck.x, result.puck.y), 3, cv::Scalar(0, 0, 255), -1);
+        std::string label = "Puck R: " + std::to_string((int)result.puck.radius);
+        cv::putText(output, label, cv::Point(result.puck.x - 20, result.puck.y - result.puck.radius - 10),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2);
+    }
     
-    cv::imwrite("debug_enhanced.tiff", img);
-    #endif
+    // Draw square if found
+    if (result.square.found) {
+        int halfSize = (int)(result.square.size / 2);
+        cv::rectangle(output, 
+                     cv::Point(result.square.x - halfSize, result.square.y - halfSize),
+                     cv::Point(result.square.x + halfSize, result.square.y + halfSize),
+                     cv::Scalar(255, 0, 255), 2);
+        cv::circle(output, cv::Point(result.square.x, result.square.y), 3, cv::Scalar(0, 0, 255), -1);
+        std::string label = "Square: " + std::to_string((int)result.square.size);
+        cv::putText(output, label, cv::Point(result.square.x - 20, result.square.y - halfSize - 10),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2);
+    }
     
-    return puck;
+    return output;
 }
 
 static void sendPaddle(Puck puck, int paddlePosition) {
@@ -756,6 +805,8 @@ static void processCameraData(camera_buffer_t* buffer)
     clock_t end;
     double channelAverage[NUM_CHANNELS];
     Puck puck;
+    Square square;
+    DetectionResult detection;
 
     // Camera data is buffer->framebuf and described by buffer->framedesc.
     // As an example, let's compute channel averages by iterating over the
@@ -766,54 +817,6 @@ static void processCameraData(camera_buffer_t* buffer)
   /* YCBYCR is camera type, 14 */
   
     switch (buffer->frametype) {
-    case CAMERA_FRAMETYPE_RGB8888:
-    {
-      // Channel averages ordering: R, G, B
-      uint32_t width = buffer->framedesc.rgb8888.width;
-      uint32_t height = buffer->framedesc.rgb8888.height;
-      uint32_t stride = buffer->framedesc.rgb8888.stride;
-
-      puck = detectGreenPuck(buffer->framebuf, width, height, stride);
-      
-      for (uint y = 0; y < height; y += 2) {
-        uint8_t *linePointer = buffer->framebuf + y * stride;
-        for (uint i = 0; i < 4 * width; i++) {
-          uint chan = i % 4;
-          if (chan == 3) {
-            continue;
-          }
-          channelAverage[chan] += (double)*(linePointer + i);
-        }
-        }
-        for (uint chan = 0; chan < NUM_CHANNELS; chan++) {
-            channelAverage[chan] /= (double)(width * height);
-        }
-        break;
-    }
-    case CAMERA_FRAMETYPE_BGR8888:
-    {
-        // Channel averages ordering: R, G, B
-        uint32_t width = buffer->framedesc.bgr8888.width;
-        uint32_t height = buffer->framedesc.bgr8888.height;
-        uint32_t stride = buffer->framedesc.bgr8888.stride;
-      
-        puck = detectGreenPuck(buffer->framebuf, width, height, stride);
-      
-        for (uint y = 0; y < height; y += 2) {
-            uint8_t* linePointer = buffer->framebuf + y * stride;
-            for (uint i = 0; i < 4 * width; i++) {
-                if (i % 4 == 3) {
-                    continue;
-                }
-                uint chan = (4 * width - i + 3) % 4 - 1;
-                channelAverage[chan] += (double)*(linePointer + i);
-            }
-        }
-        for (uint chan = 0; chan < NUM_CHANNELS; chan++) {
-            channelAverage[chan] /= (double)(width * height);
-        }
-        break;
-    }
     case CAMERA_FRAMETYPE_YCBYCR:
     {
       /* NOTE: THIS IS WHERE THE MAGIC HAPPENS */
@@ -822,7 +825,13 @@ static void processCameraData(camera_buffer_t* buffer)
       uint32_t height = buffer->framedesc.ycbycr.height;
       uint32_t stride = buffer->framedesc.ycbycr.stride;
       
-      puck = detectGreenPuck(buffer->framebuf, width, height, stride);
+      detection = detectGreenShapes(buffer->framebuf, width, height, stride);
+      puck = detection.puck;
+      square = detection.square;
+
+#ifdef DEBUG
+      cv::imwrite("debug.tiff", drawDetections(buffer->framebuf, width, height,stride, detection));
+#endif
 
       for (uint y = 0; y < height; y += 2) {
         uint8_t *linePointer = buffer->framebuf + y * stride;
@@ -833,30 +842,6 @@ static void processCameraData(camera_buffer_t* buffer)
           }
           channelAverage[chan] += (double)*(linePointer + i);
         }
-        }
-        channelAverage[0] /= (double)(width * height);
-        channelAverage[1] /= (double)(width / 2 * height);
-        channelAverage[2] /= (double)(width / 2 * height);
-        break;
-    }
-    case CAMERA_FRAMETYPE_CBYCRY:
-    {
-        // Channel averages ordering: Y, Cb, Cr
-        uint32_t width = buffer->framedesc.cbycry.width;
-        uint32_t height = buffer->framedesc.cbycry.height;
-        uint32_t stride = buffer->framedesc.cbycry.stride;
-
-      puck = detectGreenPuck(buffer->framebuf, width, height, stride);
-
-        for (uint y = 0; y < height; y += 2) {
-            uint8_t* linePointer = buffer->framebuf + y * stride;
-            for (uint i = 0; i < 2 * width; i++) {
-                uint chan = (i + 1) % 2;
-                if (chan == 1) {
-                    chan = ((i + 1) % 4 + 1) / 2;
-                }
-                channelAverage[chan] += (double)*(linePointer + i);
-            }
         }
         channelAverage[0] /= (double)(width * height);
         channelAverage[1] /= (double)(width / 2 * height);
@@ -886,7 +871,7 @@ static void processCameraData(camera_buffer_t* buffer)
     }
     printf(" (press any key to stop example)     ");
     fflush(stdout);
-
+       
     /* We know where th puck is on the x-axis, control paddle */
     sendPaddle(puck, 800);
 
