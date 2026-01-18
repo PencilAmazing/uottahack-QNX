@@ -1,3 +1,4 @@
+#include <unistd.h> // Required for usleep()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,8 +10,37 @@
 #include <sys/iofunc.h>
 #include <sys/dispatch.h>
 
-static const int LEFT_PIN = 18;
-static const int RIGHT_PIN = 19;
+static const int RIGHT_PIN = 18;
+static const int LEFT_PIN = 19;
+
+void run_command(const char* cmd) {
+    int ret = system(cmd);
+    if (ret != 0) {
+        printf("error executing ");
+        printf(cmd);
+        printf("\n");
+    }
+}
+
+void go_right() {
+    run_command("gpio-rp1 set 18 op dh");
+    run_command("gpio-rp1 set 19 op dl");
+    
+    /* rpi_gpio_set_pwm_duty_cycle(RIGHT_PIN, 0.8); */
+    /* rpi_gpio_set_pwm_duty_cycle(LEFT_PIN, 0); */
+}
+
+void go_left() {
+    run_command("gpio-rp1 set 18 op dl");
+    run_command("gpio-rp1 set 19 op dh");
+    /* rpi_gpio_set_pwm_duty_cycle(RIGHT_PIN, 0); */
+    /* rpi_gpio_set_pwm_duty_cycle(LEFT_PIN, 0.5); */
+}
+
+void stop() {
+    run_command("gpio-rp1 set 19 op dl");
+    run_command("gpio-rp1 set 18 op dl");
+}
 
 int main(int argc, char *argv[]) {
     name_attach_t *attach;
@@ -19,7 +49,9 @@ int main(int argc, char *argv[]) {
     int rcvid;
 
     printf("QNX PWM Controller starting...\n");
-
+    run_command("gpio-rp1 set 18 op dl");
+    run_command("gpio-rp1 set 19 op dl");
+    
     if (rpi_gpio_setup_pwm(LEFT_PIN, 1000, GPIO_PWM_MODE_PWM)) {
         fprintf(stderr, "Failed to initialize PWM\n");
         return EXIT_FAILURE;
@@ -55,6 +87,17 @@ int main(int argc, char *argv[]) {
         
         // Set duty cycle and reply
         printf("Received %d\n", duty_cycle);
+
+        if (duty_cycle < -100) {
+            printf("left\n");
+            go_left();
+        } else if(duty_cycle > 100) {
+            printf("right\n");
+            go_right();
+        } else {
+            printf("stop\n");
+            stop();
+        }
         
         /* if (set_duty_cycle(&ctrl, (float)duty_cycle) == 0) { */
         /*     MsgReply(rcvid, EOK, NULL, 0); */
