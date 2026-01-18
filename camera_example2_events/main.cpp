@@ -31,7 +31,9 @@
 
 #define DEBUG
 
-static const int MIDDLE = 900;
+static const int MIDDLE = 475;
+// HIGH is 787, close to arm
+// LOW is 167, away from arm
 
 /**
  * @brief Number of channels for supported frametypes
@@ -633,7 +635,7 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
     cv::Mat enhanced;
     
     // Gamma correction - increase gamma for brighter image
-    double gamma = 2.5;
+    double gamma = 3;
     cv::Mat lookUpTable(1, 256, CV_8U);
     uchar* p = lookUpTable.ptr();
     for(int i = 0; i < 256; ++i)
@@ -726,7 +728,7 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
                 
                 double angle = std::abs(std::atan2(v1.cross(v2), v1.dot(v2)) * 180.0 / CV_PI);
                 
-                if (angle < 80 || angle > 100) {
+                if (angle < 50 || angle > 120) {
                     isRectangle = false;
                     break;
                 }
@@ -749,6 +751,33 @@ DetectionResult detectGreenShapes(const unsigned char* imageData, int width, int
             }
         }
     }
+
+    #ifdef DEBUG
+    // Draw square if found
+    if (result.square.found) {
+        int halfSize = (int)(result.square.size / 2);
+        cv::rectangle(img, 
+                     cv::Point(result.square.x - halfSize, result.square.y - halfSize),
+                     cv::Point(result.square.x + halfSize, result.square.y + halfSize),
+                     cv::Scalar(255, 0, 255), 2);
+        cv::circle(img, cv::Point(result.square.x, result.square.y), 3, cv::Scalar(0, 0, 255), -1);
+        std::string label = "Square: " + std::to_string((int)result.square.size);
+        cv::putText(img, label, cv::Point(result.square.x - 20, result.square.y - halfSize - 10),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2);
+    }
+
+    if (result.puck.found) {
+        cv::circle(img, cv::Point(result.puck.x, result.puck.y), (int)result.puck.radius, 
+                   cv::Scalar(0, 255, 255), 2);
+        cv::circle(img, cv::Point(result.puck.x, result.puck.y), 3, cv::Scalar(0, 0, 255), -1);
+        std::string label = "Puck R: " + std::to_string((int)result.puck.radius);
+        cv::putText(img, label, cv::Point(result.puck.x - 20, result.puck.y - result.puck.radius - 10),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2);
+    }
+
+    cv::imwrite("debug.tiff", img);
+    
+    #endif
     
     return result;
 }
@@ -763,14 +792,7 @@ cv::Mat drawDetections(const unsigned char* imageData, int width, int height, in
     cv::Mat output = img.clone();
     
     // Draw puck if found
-    if (result.puck.found) {
-        cv::circle(output, cv::Point(result.puck.x, result.puck.y), (int)result.puck.radius, 
-                   cv::Scalar(0, 255, 255), 2);
-        cv::circle(output, cv::Point(result.puck.x, result.puck.y), 3, cv::Scalar(0, 0, 255), -1);
-        std::string label = "Puck R: " + std::to_string((int)result.puck.radius);
-        cv::putText(output, label, cv::Point(result.puck.x - 20, result.puck.y - result.puck.radius - 10),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2);
-    }
+    
     
     // Draw square if found
     if (result.square.found) {
@@ -784,19 +806,24 @@ cv::Mat drawDetections(const unsigned char* imageData, int width, int height, in
         cv::putText(output, label, cv::Point(result.square.x - 20, result.square.y - halfSize - 10),
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 2);
     }
+
+#ifdef DEBUG
+      cv::imwrite("debug.tiff", img);
+#endif
     
     return output;
 }
 
-static void sendPaddle(Puck puck, int paddlePosition) {
-    int delta = puck.x - MIDDLE;
+static int sendPaddle(Puck puck, Square paddle) {
+    int delta = puck.y - paddle.y;
 
     if (delta > 100) {
         paddle_left();
     } else if(delta < -100) {
         paddle_right();
     }
-    
+
+    return delta;
 }
 
 static void processCameraData(camera_buffer_t* buffer)
@@ -829,10 +856,6 @@ static void processCameraData(camera_buffer_t* buffer)
       puck = detection.puck;
       square = detection.square;
 
-#ifdef DEBUG
-      cv::imwrite("debug.tiff", drawDetections(buffer->framebuf, width, height,stride, detection));
-#endif
-
       for (uint y = 0; y < height; y += 2) {
         uint8_t *linePointer = buffer->framebuf + y * stride;
         for (uint i = 0; i < 2 * width; i++) {
@@ -859,6 +882,9 @@ static void processCameraData(camera_buffer_t* buffer)
 
     double delta_time = (double)(end - begin) / CLOCKS_PER_SEC * 1000;
 
+    /* We know where th puck is on the x-axis, control paddle */
+    int puckPaddleDelta = sendPaddle(puck, square);
+    
     printf("\r");
     printf("Channel averages: ");
     printf("%.3f, %.3f, %.3f", channelAverage[0], channelAverage[1], channelAverage[2]);
@@ -867,13 +893,22 @@ static void processCameraData(camera_buffer_t* buffer)
     if (puck.found) {
       printf(" Puck: (%d, %d) - radius %f", puck.x, puck.y, puck.radius);
     } else {
-      printf(" Puck not found");
+      printf(" Puck not found ");
     }
+
+    if (square.found) {
+        printf(" Paddle (%d, %d)", square.x, square.y);
+    } else {
+        printf(" Paddle not found ");
+    }
+    
+    if (puck.found && square.found) {
+      printf(" Delta puck - paddle = %d", puckPaddleDelta);
+    }
+    
     printf(" (press any key to stop example)     ");
     fflush(stdout);
        
-    /* We know where th puck is on the x-axis, control paddle */
-    sendPaddle(puck, 800);
 
     return;
 }
